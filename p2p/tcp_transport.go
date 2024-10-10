@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"sync"
@@ -17,6 +16,12 @@ type TCPPeer struct {
 	outbound bool
 }
 
+type TCPTransportOpts struct {
+	ListenAddr    string
+	HandshakeFunc HandshakeFunc
+	Decoder       Decoder
+}
+
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		conn:     conn,
@@ -25,24 +30,21 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 }
 
 type TCPTransport struct {
-	listenAddress string
-	listener      net.Listener
-	shakeHands    HandshakeFunc
-	decoder       Decoder
+	TCPTransportOpts
+	listener net.Listener
 
 	mu    sync.Mutex
 	peers map[net.Addr]Peer
 }
 
-func NewTCPTransport(listAddr string) *TCPTransport {
+func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
-		listenAddress: listAddr,
-		shakeHands:    NOPHandshakeFunc,
+		TCPTransportOpts: opts,
 	}
 }
 
 func (t *TCPTransport) ListenAndAccept() error {
-	ln, err := net.Listen("tcp", t.listenAddress)
+	ln, err := net.Listen("tcp", t.TCPTransportOpts.ListenAddr)
 	if err != nil {
 		return err
 	}
@@ -68,7 +70,8 @@ type Temp struct{}
 func (t *TCPTransport) handleConn(conn net.Conn) {
 	peer := NewTCPPeer(conn, true)
 	// create handshake
-	if err := t.shakeHands(peer); err != nil {
+	if err := t.HandshakeFunc(peer); err != nil {
+		conn.Close()
 		fmt.Printf("Unable to validate connection%v\n", peer)
 		return
 	}
@@ -76,13 +79,13 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	// Read and Decode
 	//Read data from io, and decode it.
 	fmt.Printf("New incoming connection %v\n", peer)
-	buf := new(bytes.Buffer)
-	msg := &Temp{}
+	msg := &Message{}
 	for {
-		if err := t.decoder.Decode(buf, msg); err != nil {
+		if err := t.Decoder.Decode(conn, msg); err != nil {
 			fmt.Printf("TCP error: %s\n", err)
 			continue
 		}
+		msg.From = conn.RemoteAddr()
+		fmt.Printf("message: %v\n", msg)
 	}
-
 }
