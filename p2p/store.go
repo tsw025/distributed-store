@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -108,10 +109,22 @@ func (s *Store) writeStream(filePath string, r io.Reader) error {
 	log.Printf("written (%d) byes to disk: %s", n, fullPathWithRoot)
 	return nil
 }
+func (s *Store) Has(key string) bool {
+	pathKey := s.StoreOpts.PathTransformFunc(key)
+	fullpathWithRoot := filepath.Join(s.StoreOpts.Root, pathKey.FullPath())
+
+	_, err := os.Stat(fullpathWithRoot)
+	return !errors.Is(err, os.ErrNotExist)
+
+}
 
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	pathKey := s.StoreOpts.PathTransformFunc(key)
 	return os.Open(filepath.Join(s.StoreOpts.Root, pathKey.FullPath()))
+}
+
+func (s *Store) CleanUp() error {
+	return os.RemoveAll(s.StoreOpts.Root)
 }
 
 func (s *Store) Delete(key string) error {
