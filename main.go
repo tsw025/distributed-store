@@ -3,32 +3,33 @@ package main
 import (
 	"dfs/p2p"
 	"log"
-	"time"
 )
 
-func main() {
+func makeServer(listenAddr string, nodes ...string) *FileServer {
 	tcpTransportOpts := p2p.TCPTransportOpts{
-		ListenAddr:    ":3000",
+		ListenAddr:    listenAddr,
 		HandshakeFunc: p2p.NOPHandshakeFunc,
 		Decoder:       p2p.GOBDecoder{},
-		OnPeer: func(peer p2p.Peer) error {
-			return nil
-		},
 	}
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 	fileServerOpts := FileServerOpts{
-		StorageRoot:       "3000_network",
+		StorageRoot:       listenAddr + "_network",
 		PathTransformFunc: p2p.CASPathTransformFunc,
 		Transport:         tcpTransport,
+		BootStrapNodes:    nodes,
 	}
 	s := NewFileServer(fileServerOpts)
+	tcpTransport.OnPeer = s.OnPeer
+	return s
+}
 
+func main() {
+
+	s1 := makeServer(":3000", "")
+	s2 := makeServer(":4000", ":3000")
 	go func() {
-		time.Sleep(time.Second * 3)
-		s.Stop()
+		log.Fatal(s1.Start())
 	}()
 
-	if err := s.Start(); err != nil {
-		log.Fatal(err)
-	}
+	s2.Start()
 }
