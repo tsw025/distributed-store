@@ -5,35 +5,30 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 )
 
 // TCPPeer represents the remote node over a TCP established connection.
 type TCPPeer struct {
 	// conn is the underlying connection of the peer
-	conn net.Conn
+	net.Conn
 
 	// dial, if we dial and retrieve a conn => outbound == true
 	// if we accept and retrieve a conn => outbound == false
 	outbound bool
+
+	Wg sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
 	}
 }
 
-func (p *TCPPeer) Close() error {
-	if err := p.conn.Close(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (p *TCPPeer) Send(b []byte) error {
-	_, err := p.conn.Write(b)
+	_, err := p.Conn.Write(b)
 	return err
 }
 
@@ -57,16 +52,9 @@ func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	}
 }
 
-// Consume implements the Transport interface, which will return read-only channel
-// for reading the incoming messages receive from another peer in the network
+// Consume implements the Transport interface, which will return read-only channel // for reading the incoming messages receive from another peer in the network
 func (t *TCPTransport) Consume() <-chan RPC {
 	return t.rpcch
-}
-
-// RemoteAddr implements the Peer interface, and will return the remote address of its
-// underlying connection.
-func (p *TCPPeer) RemoteAddr() net.Addr {
-	return p.conn.RemoteAddr()
 }
 
 // Close implements the Transport interface
@@ -134,14 +122,16 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	rpc := RPC{}
 	for {
 		err := t.Decoder.Decode(conn, &rpc)
-		//fmt.Println(reflect.TypeOf(err))
-		//panic(err)
 
 		if err != nil {
 			fmt.Printf("TCP error: %s\n", err)
 			return
 		}
-		rpc.From = conn.RemoteAddr()
+		rpc.From = conn.RemoteAddr().String()
+		peer.Wg.Add(1)
+		fmt.Println("Waiting till stream is done")
 		t.rpcch <- rpc
+		peer.Wg.Wait()
+		fmt.Println("stream done continuing normal read loop.")
 	}
 }
