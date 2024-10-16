@@ -75,7 +75,7 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
-func (s *Store) Write(key string, r io.Reader) error {
+func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
@@ -92,26 +92,26 @@ func (s *Store) Read(key string) (io.Reader, error) {
 
 }
 
-func (s *Store) writeStream(filePath string, r io.Reader) error {
+func (s *Store) writeStream(filePath string, r io.Reader) (int64, error) {
 	pathKey := s.StoreOpts.PathTransformFunc(filePath)
 	pathNameWithRoot := filepath.Join(s.StoreOpts.Root, pathKey.PathName)
 	if err := os.MkdirAll(pathNameWithRoot, os.ModePerm); err != nil {
-		return err
+		return 0, err
 	}
 
 	fullPathWithRoot := filepath.Join(s.StoreOpts.Root, pathKey.FullPath())
 	f, err := os.Create(filepath.Join(fullPathWithRoot))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	log.Printf("written (%d) byes to disk: %s", n, fullPathWithRoot)
-	return nil
+	return n, nil
 }
 func (s *Store) Has(key string) bool {
 	pathKey := s.StoreOpts.PathTransformFunc(key)
