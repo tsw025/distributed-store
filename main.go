@@ -1,15 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"dfs/p2p"
 	"log"
+	"time"
 )
 
 func makeServer(listenAddr string, nodes ...string) *FileServer {
 	tcpTransportOpts := p2p.TCPTransportOpts{
 		ListenAddr:    listenAddr,
 		HandshakeFunc: p2p.NOPHandshakeFunc,
-		Decoder:       p2p.GOBDecoder{},
+		Decoder:       p2p.NOPDecoder{},
 	}
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 	fileServerOpts := FileServerOpts{
@@ -30,6 +32,13 @@ func main() {
 	go func() {
 		log.Fatal(s1.Start())
 	}()
+	time.Sleep(2 * time.Second)
+	go s2.Start()
+	time.Sleep(2 * time.Second)
+	data := bytes.NewReader([]byte("my big data file here!"))
+	if err := s2.StoreData("myprivatekey", data); err != nil {
+		log.Fatal(err)
+	}
 
-	s2.Start()
+	select {}
 }
