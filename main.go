@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"dfs/p2p"
+	"fmt"
+	"io"
 	"log"
 	"time"
 )
@@ -35,10 +36,22 @@ func main() {
 	time.Sleep(2 * time.Second)
 	go s2.Start()
 	time.Sleep(2 * time.Second)
-	data := bytes.NewReader([]byte("my big data file here!"))
-	if err := s2.StoreData("myprivatekey", data); err != nil {
+	//data := bytes.NewReader([]byte("my big data file here!"))
+	//if err := s2.Store("myprivatekey", data); err != nil {
+	//	log.Fatal(err)
+	//}
+
+	r, err := s2.Get("myprivatekey")
+	if err != nil {
 		log.Fatal(err)
 	}
+
+	b, err := io.ReadAll(r)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(b))
 
 	select {}
 }
