@@ -82,11 +82,11 @@ func (s *FileServer) Get(key string) (io.Reader, error) {
 		return nil, err
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	for _, peer := range s.peers {
 		fmt.Println("receiving stream from peer: ", peer.RemoteAddr())
 		fileBuffer := new(bytes.Buffer)
-		n, err := io.CopyN(fileBuffer, peer, 10)
+		n, err := io.CopyN(fileBuffer, peer, 22)
 		if err != nil {
 			return nil, err
 		}
@@ -96,15 +96,20 @@ func (s *FileServer) Get(key string) (io.Reader, error) {
 	}
 
 	select {}
+
 	return nil, nil
 }
 
+// This will be the intial point where the client will store the file into the server.
 func (s *FileServer) Store(key string, r io.Reader) error {
 	var (
 		fileBuffer = new(bytes.Buffer)
 		tee        = io.TeeReader(r, fileBuffer)
 	)
-
+	// Here, the TeeReader will read from the source, and simultaneously write to the buffer.
+	// So the will hold the original source, and one in the buffer.
+	// We do this because we need to read the data twice, when saving and broadcasting.
+	// We can't read from io.Reader twice.
 	size, err := s.store.Write(key, tee)
 	if err != nil {
 		return err
@@ -117,13 +122,17 @@ func (s *FileServer) Store(key string, r io.Reader) error {
 		},
 	}
 
+	// Broadcast msg.
 	if err := s.broadcast(&msg); err != nil {
 		return err
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Millisecond)
 
 	//TODO: use a multiwriter here.
+	// Send the actual data as a stream, so that the broadcast channels
+	// and will continue to read from the peers(handleMessageStoreFile).
 	for _, peer := range s.peers {
+		peer.Send([]byte{p2p.IncomingStream})
 		n, err := io.Copy(peer, fileBuffer)
 		if err != nil {
 			return err
@@ -134,6 +143,7 @@ func (s *FileServer) Store(key string, r io.Reader) error {
 	return nil
 }
 
+// This will continuously process the incoming messages, and handle shutdown signal.
 func (s *FileServer) loop() {
 	defer func() {
 		log.Println("file server stopped due to user, quit action.")
@@ -143,6 +153,7 @@ func (s *FileServer) loop() {
 		}
 	}()
 
+	// This will listen to the channels and process messages appropriately.
 	for {
 		select {
 		case rpc := <-s.Transport.Consume():
@@ -151,7 +162,7 @@ func (s *FileServer) loop() {
 				log.Println("decoding error: ", err)
 			}
 			if err := s.handleMessage(rpc.From, &msg); err != nil {
-				log.Print("handdle message error: ", err)
+				log.Print("handle message error: ", err)
 			}
 		case <-s.quitch:
 			return
@@ -169,6 +180,8 @@ func (s *FileServer) handleMessage(from string, msg *Message) error {
 	return nil
 }
 
+// The handleMessageStoreFile will retrieve the data written to the TCP Conn on the peers.
+// and will write to the network, and finally close the steam wait group.
 func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) error {
 	peer, ok := s.peers[from]
 	if !ok {
@@ -179,7 +192,7 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 		return err
 	}
 
-	fmt.Printf("written %d bytes to disk\n", n)
+	fmt.Printf("[%s] written %d bytes to disk\n", s.Transport.Addr(), n)
 
 	peer.(*p2p.TCPPeer).Wg.Done()
 	return nil
@@ -228,10 +241,12 @@ func (s *FileServer) bootStrapNetwork() error {
 }
 
 func (s *FileServer) Start() error {
+	// This creates the local node, the inbound connection, by a go routine.
 	if err := s.Transport.ListenAndAccept(); err != nil {
 		return err
 	}
 
+	// This open ups the outbound connections (remote), by a go routine.
 	s.bootStrapNetwork()
 	s.loop()
 	return nil
@@ -248,6 +263,10 @@ func (s *FileServer) stream(msg *Message) error {
 	return gob.NewEncoder(mw).Encode(&msg)
 }
 
+// Right now the broadcast will do is send message to the network.
+// In specific, this will send the message over the TCP peer configured.
+// So far we are only broadcasting the metadata, when using Store, and GET.
+// Thats why we use the Incoming Message.
 func (s *FileServer) broadcast(msg *Message) error {
 	buf := new(bytes.Buffer)
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
@@ -255,6 +274,7 @@ func (s *FileServer) broadcast(msg *Message) error {
 	}
 
 	for _, peer := range s.peers {
+		peer.Send([]byte{p2p.IncomingMessage})
 		if err := peer.Send(buf.Bytes()); err != nil {
 			log.Println(err)
 		}
