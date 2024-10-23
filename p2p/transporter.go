@@ -12,6 +12,7 @@ type Peer interface {
 // between the notes in the network. This can be of the
 // for (TCP, UDP, Websockets, ...)
 type Transport interface {
+	Addr() string
 	Dial(string) error
 	ListenAndAccept() error
 	Consume() <-chan RPC

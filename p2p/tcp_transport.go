@@ -62,6 +62,10 @@ func (t *TCPTransport) Close() error {
 	return t.listener.Close()
 }
 
+func (t *TCPTransport) Addr() string {
+	return t.ListenAddr
+}
+
 func (t *TCPTransport) Dial(addr string) error {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -99,6 +103,9 @@ func (t *TCPTransport) startAcceptLoop() {
 	}
 }
 
+// This is a common handle function for both local and remote network,
+// what it will do is add a message to the rpc channel, or wait until
+// a message being read by a streaming channel.
 func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	defer func() {
 		fmt.Println("dropping peer connection")
@@ -119,19 +126,28 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	// Read and Decode
 	//Read data from io, and decode it.
-	rpc := RPC{}
+	// Here each connection will keep on reading from the reader.
+	// If it's a stream we are letting the client to handle the stream.
+	// Not decoding the data
 	for {
+		rpc := RPC{}
 		err := t.Decoder.Decode(conn, &rpc)
 
 		if err != nil {
 			fmt.Printf("TCP error: %s\n", err)
 			return
 		}
+
 		rpc.From = conn.RemoteAddr().String()
-		peer.Wg.Add(1)
-		fmt.Println("Waiting till stream is done")
+
+		if rpc.Stream {
+			peer.Wg.Add(1)
+			fmt.Printf("[%s] incoming stream, wating...\n", conn.RemoteAddr())
+			peer.Wg.Wait()
+			fmt.Printf("[%s] stream closed, resuming read loop\n", conn.RemoteAddr())
+			continue
+		}
+
 		t.rpcch <- rpc
-		peer.Wg.Wait()
-		fmt.Println("stream done continuing normal read loop.")
 	}
 }
