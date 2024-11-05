@@ -40,6 +40,7 @@ func NewFileServer(opts FileServerOpts) *FileServer {
 		peers:          make(map[string]p2p.Peer),
 	}
 }
+
 func (s *FileServer) Stop() {
 	close(s.quitch)
 }
@@ -122,13 +123,14 @@ func (s *FileServer) Store(key string, r io.Reader) error {
 		},
 	}
 
-	// Broadcast msg.
+	// Broadcast msg. Here we are sending a Incoming Message
 	if err := s.broadcast(&msg); err != nil {
 		return err
 	}
+
 	time.Sleep(3 * time.Millisecond)
 
-	//TODO: use a multiwriter here.
+	// TODO: use a multiwriter here.
 	// Send the actual data as a stream, so that the broadcast channels
 	// and will continue to read from the peers(handleMessageStoreFile).
 	for _, peer := range s.peers {
@@ -146,7 +148,7 @@ func (s *FileServer) Store(key string, r io.Reader) error {
 // This will continuously process the incoming messages, and handle shutdown signal.
 func (s *FileServer) loop() {
 	defer func() {
-		log.Println("file server stopped due to user, quit action.")
+		log.Println("file server stopped due to error or user quit action.")
 		err := s.Transport.Close()
 		if err != nil {
 			return
@@ -194,13 +196,13 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 
 	fmt.Printf("[%s] written %d bytes to disk\n", s.Transport.Addr(), n)
 
-	peer.(*p2p.TCPPeer).Wg.Done()
+	peer.CloseStream()
 	return nil
 }
 
 func (s *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error {
 	if !s.store.Has(msg.Key) {
-		return fmt.Errorf("need to server file (%s) but it does not exist on disk", msg.Key)
+		return fmt.Errorf("need to serve file (%s) but it does not exist on disk", msg.Key)
 	}
 
 	fmt.Printf("serving file (%s) over the network\n", msg.Key)
