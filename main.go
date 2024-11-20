@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"dfs/p2p"
 	"fmt"
+	"io"
 	"log"
 	"time"
 )
@@ -27,7 +27,6 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 }
 
 func main() {
-
 	s1 := makeServer(":3000", "")
 	s2 := makeServer(":4000", ":3000")
 	go func() {
@@ -38,26 +37,22 @@ func main() {
 	go s2.Start()
 	time.Sleep(2 * time.Second)
 
-	for i := 0; i < 10; i++ {
-		data := bytes.NewReader([]byte("my big data file here!"))
-		key := fmt.Sprintf("myprivatekey_%d", i)
-		if err := s2.Store(key, data); err != nil {
-			log.Fatal(err)
-		}
-		time.Sleep(300 * time.Millisecond)
+	// data := bytes.NewReader([]byte("my big data file here!"))
+	// key := "coolPicture.jpg"
+	// if err := s2.Store(key, data); err != nil {
+	// 	log.Fatal(err)
+	// }
+	// time.Sleep(300 * time.Millisecond)
+	//
+	r, err := s2.Get("coolPicture.jpg")
+	if err != nil {
+		log.Fatal(err)
 	}
-	//
-	//r, err := s2.Get("key that does not exist")
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//b, err := io.ReadAll(r)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//fmt.Println(string(b))
 
-	select {}
+	b, err := io.ReadAll(r)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(b))
 }

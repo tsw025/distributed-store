@@ -17,7 +17,7 @@ type TCPPeer struct {
 	// if we accept and retrieve a conn => outbound == false
 	outbound bool
 
-	Wg sync.WaitGroup
+	wg sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
@@ -30,6 +30,10 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 func (p *TCPPeer) Send(b []byte) error {
 	_, err := p.Conn.Write(b)
 	return err
+}
+
+func (p *TCPPeer) CloseStream() {
+	p.wg.Done()
 }
 
 type TCPTransportOpts struct {
@@ -62,6 +66,8 @@ func (t *TCPTransport) Close() error {
 	return t.listener.Close()
 }
 
+// Addr implements the Transport interface return the address
+// the transport is accepting connections.
 func (t *TCPTransport) Addr() string {
 	return t.ListenAddr
 }
@@ -125,14 +131,13 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	}
 
 	// Read and Decode
-	//Read data from io, and decode it.
+	// Read data from io, and decode it.
 	// Here each connection will keep on reading from the reader.
 	// If it's a stream we are letting the client to handle the stream.
 	// Not decoding the data
 	for {
 		rpc := RPC{}
 		err := t.Decoder.Decode(conn, &rpc)
-
 		if err != nil {
 			fmt.Printf("TCP error: %s\n", err)
 			return
@@ -141,9 +146,9 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 		rpc.From = conn.RemoteAddr().String()
 
 		if rpc.Stream {
-			peer.Wg.Add(1)
+			peer.wg.Add(1)
 			fmt.Printf("[%s] incoming stream, wating...\n", conn.RemoteAddr())
-			peer.Wg.Wait()
+			peer.wg.Wait()
 			fmt.Printf("[%s] stream closed, resuming read loop\n", conn.RemoteAddr())
 			continue
 		}

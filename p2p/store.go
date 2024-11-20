@@ -78,6 +78,8 @@ func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
+// FIXME: Instead of copying directly to a reader we first copy this into
+// a buffer. Maybe just run the File from readStream
 func (s *Store) Read(key string) (io.Reader, error) {
 	f, err := s.readStream(key)
 	if err != nil {
@@ -88,7 +90,6 @@ func (s *Store) Read(key string) (io.Reader, error) {
 	buf := new(bytes.Buffer)
 	_, err = io.Copy(buf, f)
 	return buf, err
-
 }
 
 func (s *Store) writeStream(filePath string, r io.Reader) (int64, error) {
@@ -110,13 +111,13 @@ func (s *Store) writeStream(filePath string, r io.Reader) (int64, error) {
 	}
 	return n, nil
 }
+
 func (s *Store) Has(key string) bool {
 	pathKey := s.StoreOpts.PathTransformFunc(key)
 	fullpathWithRoot := filepath.Join(s.StoreOpts.Root, pathKey.FullPath())
 
 	_, err := os.Stat(fullpathWithRoot)
 	return !os.IsNotExist(err)
-
 }
 
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
